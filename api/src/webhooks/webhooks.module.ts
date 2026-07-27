@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
+import { DeliveryModule } from '../delivery/delivery.module';
 import { EventsModule } from '../events/events.module';
 import { SourcesModule } from '../sources/sources.module';
 import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
 
 @Module({
-  imports: [SourcesModule, EventsModule],
+  imports: [SourcesModule, EventsModule, DeliveryModule],
   controllers: [WebhooksController],
   providers: [WebhooksService],
 })

@@ -1,41 +1,58 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { EventsService } from '../events/events.service';
+import { DeliveryService } from '../delivery/delivery.service';
 import { StoredEvent } from '../events/entities/event.entity';
+import { EventsService } from '../events/events.service';
 import { SourcesService } from '../sources/sources.service';
 
 const HEADER_WHITELIST = ['content-type', 'user-agent', 'x-webhook-secret'];
 
 @Injectable()
 export class WebhooksService {
-  /** Idempotency-Key -> eventId. */
+  private readonly logger = new Logger(WebhooksService.name);
+
+  /** Ключ состоит из sourceId и Idempotency-Key. */
   private readonly idempotency = new Map<string, string>();
 
   constructor(
     private readonly sourcesService: SourcesService,
     private readonly eventsService: EventsService,
+    private readonly deliveryService: DeliveryService,
   ) {}
 
+  /**
+   * Проверяет источник и secret, сохраняет событие и запускает
+   * асинхронную доставку.
+   */
   ingest(
     sourceId: string,
     body: unknown,
     headers: Record<string, string | string[] | undefined>,
   ): { eventId: string; status: 'received' } {
-    // 404 до проверки секрета: у несуществующего источника нечего сверять
+    // 404 до проверки секрета: у несуществующего источника нечего сверять.
     const source = this.sourcesService.getEntityOrThrow(sourceId);
 
     if (source.secret) {
       const provided = this.headerValue(headers['x-webhook-secret']);
+
       if (!provided || !this.secretsMatch(source.secret, provided)) {
         throw new UnauthorizedException('Invalid webhook secret');
       }
     }
 
     const idempotencyKey = this.headerValue(headers['idempotency-key']);
-    if (idempotencyKey) {
-      const existing = this.idempotency.get(`${sourceId}:${idempotencyKey}`);
-      if (existing) {
-        return { eventId: existing, status: 'received' };
+    const scopedIdempotencyKey = idempotencyKey
+      ? `${sourceId}:${idempotencyKey}`
+      : undefined;
+
+    if (scopedIdempotencyKey) {
+      const existingEventId = this.idempotency.get(scopedIdempotencyKey);
+
+      if (existingEventId) {
+        return {
+          eventId: existingEventId,
+          status: 'received',
+        };
       }
     }
 
@@ -45,46 +62,81 @@ export class WebhooksService {
       headers: this.pickHeaders(headers),
       body,
       receivedAt: new Date().toISOString(),
-      delivery: { status: 'pending', attempts: [], lastError: null },
+      delivery: {
+        status: 'pending',
+        attempts: [],
+        lastError: null,
+      },
     };
+
     this.eventsService.add(event);
 
-    if (idempotencyKey) {
-      this.idempotency.set(`${sourceId}:${idempotencyKey}`, event.id);
+    if (scopedIdempotencyKey) {
+      this.idempotency.set(scopedIdempotencyKey, event.id);
     }
 
-    // TODO: fire-and-forget запуск доставки с .catch()
+    // Клиент получает 202 сразу после сохранения события. Ошибка подписчика
+    // обрабатывается DeliveryService; этот catch защищает от неожиданных
+    // ошибок orchestration-кода и unhandledRejection.
+    void this.deliveryService
+      .deliverWithRetries(event.id)
+      .catch((error: unknown) => {
+        this.logger.error({
+          message: 'Unexpected delivery orchestration error',
+          eventId: event.id,
+          sourceId: event.sourceId,
+          error: this.errorMessage(error),
+        });
+      });
 
-    return { eventId: event.id, status: 'received' };
+    return {
+      eventId: event.id,
+      status: 'received',
+    };
   }
 
   /**
-   * Timing-safe сравнение: обычное `===` возвращает результат тем быстрее,
-   * чем раньше расходятся строки, что позволяет подбирать секрет посимвольно
-   * по времени ответа. timingSafeEqual сравнивает за константное время;
-   * хэшируем обе стороны, чтобы выровнять длину буферов (иначе она утекает).
+   * Timing-safe сравнение: обычное `===` может завершаться тем быстрее,
+   * чем раньше расходятся строки. Перед timingSafeEqual обе стороны
+   * хэшируются, чтобы буферы всегда имели одинаковую длину.
    */
   private secretsMatch(expected: string, provided: string): boolean {
-    const a = createHash('sha256').update(expected).digest();
-    const b = createHash('sha256').update(provided).digest();
-    return timingSafeEqual(a, b);
+    const expectedHash = createHash('sha256').update(expected).digest();
+    const providedHash = createHash('sha256').update(provided).digest();
+
+    return timingSafeEqual(expectedHash, providedHash);
   }
 
-  /** Whitelist; значение секрета маскируется. */
+  /**
+   * Сохраняет только разрешённые заголовки и маскирует secret.
+   */
   private pickHeaders(
     headers: Record<string, string | string[] | undefined>,
   ): Record<string, string> {
     const picked: Record<string, string> = {};
+
     for (const name of HEADER_WHITELIST) {
       const value = this.headerValue(headers[name]);
+
       if (value !== undefined) {
         picked[name] = name === 'x-webhook-secret' ? '***' : value;
       }
     }
+
     return picked;
   }
 
-  private headerValue(v: string | string[] | undefined): string | undefined {
-    return Array.isArray(v) ? v[0] : v;
+  private headerValue(
+    value: string | string[] | undefined,
+  ): string | undefined {
+    return Array.isArray(value) ? value[0] : value;
+  }
+
+  private errorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message || error.name;
+    }
+
+    return String(error);
   }
 }
