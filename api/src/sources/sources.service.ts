@@ -1,36 +1,41 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { CreateSourceDto } from './dto/create-source.dto';
-import { UpdateSourceDto } from './dto/update-source.dto';
+import { SourceResponseDto } from './dto/source-response.dto';
 import { Source } from './entities/source.entity';
 
 @Injectable()
 export class SourcesService {
   private readonly sources = new Map<string, Source>();
 
-  create(dto: CreateSourceDto): Source {
-    this.assertSlugFree(dto.slug);
+  constructor(private readonly config: ConfigService) {}
 
+  create(dto: CreateSourceDto): SourceResponseDto {
     const source: Source = {
       id: randomUUID(),
       name: dto.name,
-      slug: dto.slug,
+      ...(dto.secret ? { secret: dto.secret } : {}),
       ...(dto.subscriberUrl ? { subscriberUrl: dto.subscriberUrl } : {}),
       createdAt: new Date().toISOString(),
     };
     this.sources.set(source.id, source);
-    return source;
+    return this.toResponse(source);
   }
 
-  findAll(): Source[] {
-    return [...this.sources.values()];
+  findAll(): SourceResponseDto[] {
+    return [...this.sources.values()].map((s) => this.toResponse(s));
   }
 
-  findOne(id: string): Source {
+  findOne(id: string): SourceResponseDto {
+    return this.toResponse(this.getEntityOrThrow(id));
+  }
+
+  /**
+   * Внутренняя модель с secret — только для ingest-модуля
+   * (проверка X-Webhook-Secret). Через контроллеры наружу не отдавать.
+   */
+  getEntityOrThrow(id: string): Source {
     const source = this.sources.get(id);
     if (!source) {
       throw new NotFoundException(`Source "${id}" not found`);
@@ -38,29 +43,16 @@ export class SourcesService {
     return source;
   }
 
-  findBySlug(slug: string): Source | undefined {
-    return [...this.sources.values()].find((s) => s.slug === slug);
-  }
-
-  update(id: string, dto: UpdateSourceDto): Source {
-    const source = this.findOne(id);
-    if (dto.slug && dto.slug !== source.slug) {
-      this.assertSlugFree(dto.slug);
-    }
-    const updated: Source = { ...source, ...dto };
-    this.sources.set(id, updated);
-    return updated;
-  }
-
-  remove(id: string): void {
-    if (!this.sources.delete(id)) {
-      throw new NotFoundException(`Source "${id}" not found`);
-    }
-  }
-
-  private assertSlugFree(slug: string): void {
-    if (this.findBySlug(slug)) {
-      throw new ConflictException(`Slug "${slug}" is already taken`);
-    }
+  /** secret намеренно не попадает в ответ — наружу только hasSecret. */
+  private toResponse(source: Source): SourceResponseDto {
+    const port = this.config.get<string>('API_PORT') ?? '4002';
+    return {
+      id: source.id,
+      name: source.name,
+      ingestUrl: `http://localhost:${port}/webhooks/${source.id}`,
+      hasSecret: Boolean(source.secret),
+      ...(source.subscriberUrl ? { subscriberUrl: source.subscriberUrl } : {}),
+      createdAt: source.createdAt,
+    };
   }
 }
