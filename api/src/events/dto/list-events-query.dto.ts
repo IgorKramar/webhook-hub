@@ -13,9 +13,8 @@ export type EventStatusFilter = (typeof EVENT_STATUS_FILTERS)[number];
 
 export class ListEventsQueryDto {
   @ApiPropertyOptional({
-    description:
-      'Фильтр по статусу. received — pending-событие без попыток доставки',
-    enum: EVENT_STATUS_FILTERS,
+    description: 'Фильтр по идентификатору источника',
+    format: 'uuid',
   })
   @IsOptional()
   @IsUUID()
@@ -23,7 +22,7 @@ export class ListEventsQueryDto {
 
   @ApiPropertyOptional({
     description:
-      'Фильтр по статусу. received в текущей модели эквивалентен pending',
+      'Фильтр по статусу. received — pending-событие без попыток доставки',
     enum: EVENT_STATUS_FILTERS,
   })
   @IsOptional()
