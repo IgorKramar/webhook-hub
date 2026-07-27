@@ -10,6 +10,7 @@ import { FastifyReply } from 'fastify';
 const CODE_BY_STATUS: Record<number, string> = {
   400: 'VALIDATION_ERROR',
   404: 'NOT_FOUND',
+  409: 'SLUG_TAKEN',
   502: 'DELIVERY_FAILED',
 };
 

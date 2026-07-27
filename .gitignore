@@ -4,3 +4,5 @@ api/data/
 web/.next/
 dist/
 *.log
+*.md
+!README.md
