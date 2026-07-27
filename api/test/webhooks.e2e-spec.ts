@@ -4,10 +4,12 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { AppModule } from './../src/app.module';
-import { DeliveryService } from './../src/delivery/delivery.service';
-import { EventsService } from './../src/events/events.service';
-import { setupApp } from './../src/setup-app';
+import { AppModule } from '../src/app.module';
+import { DeliveryService } from '../src/delivery/delivery.service';
+import { EventsService } from '../src/events/events.service';
+import { setupApp } from '../src/setup-app';
+import { StorageService } from '../src/storage/storage.service';
+import { InMemoryStorageService } from './in-memory-storage';
 
 interface ErrorBody {
   error: string;
@@ -19,7 +21,7 @@ interface IngestResponse {
   status: string;
 }
 
-const body = <T>(res: request.Response): T => res.body as T;
+const body = <T>(response: request.Response): T => response.body as T;
 
 describe('Webhooks ingest (e2e)', () => {
   let app: NestFastifyApplication;
@@ -28,13 +30,18 @@ describe('Webhooks ingest (e2e)', () => {
   let openSourceId: string;
 
   const deliveryServiceMock = {
-    deliverWithRetries: jest.fn(() => Promise.resolve()),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    deliverWithRetries: jest.fn((_eventId: string): Promise<void> =>
+      Promise.resolve(),
+    ),
   };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
+      .overrideProvider(StorageService)
+      .useClass(InMemoryStorageService)
       .overrideProvider(DeliveryService)
       .useValue(deliveryServiceMock)
       .compile();
@@ -44,6 +51,7 @@ describe('Webhooks ingest (e2e)', () => {
     );
 
     setupApp(app);
+
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
@@ -51,14 +59,19 @@ describe('Webhooks ingest (e2e)', () => {
 
     const secured = await request(app.getHttpServer())
       .post('/api/sources')
-      .send({ name: 'secured', secret: 's3cret' })
+      .send({
+        name: 'secured',
+        secret: 's3cret',
+      })
       .expect(201);
 
     securedSourceId = body<{ id: string }>(secured).id;
 
     const open = await request(app.getHttpServer())
       .post('/api/sources')
-      .send({ name: 'open' })
+      .send({
+        name: 'open',
+      })
       .expect(201);
 
     openSourceId = body<{ id: string }>(open).id;
@@ -73,13 +86,16 @@ describe('Webhooks ingest (e2e)', () => {
   });
 
   it('202 с верным секретом и асинхронно запускает доставку', async () => {
-    const res = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post(`/webhooks/${securedSourceId}`)
       .set('X-Webhook-Secret', 's3cret')
-      .send({ orderId: 42, amount: 100 })
+      .send({
+        orderId: 42,
+        amount: 100,
+      })
       .expect(202);
 
-    const result = body<IngestResponse>(res);
+    const result = body<IngestResponse>(response);
 
     expect(result.eventId).toEqual(expect.any(String));
     expect(result.status).toBe('received');
@@ -90,32 +106,38 @@ describe('Webhooks ingest (e2e)', () => {
   });
 
   it('401 UNAUTHORIZED при неверном секрете и не запускает доставку', async () => {
-    const res = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post(`/webhooks/${securedSourceId}`)
       .set('X-Webhook-Secret', 'wrong')
-      .send({ a: 1 })
+      .send({
+        a: 1,
+      })
       .expect(401);
 
-    expect(body<ErrorBody>(res).code).toBe('UNAUTHORIZED');
+    expect(body<ErrorBody>(response).code).toBe('UNAUTHORIZED');
     expect(deliveryServiceMock.deliverWithRetries).not.toHaveBeenCalled();
   });
 
   it('401 при отсутствии секрета, если он задан у источника', async () => {
     await request(app.getHttpServer())
       .post(`/webhooks/${securedSourceId}`)
-      .send({ a: 1 })
+      .send({
+        a: 1,
+      })
       .expect(401);
 
     expect(deliveryServiceMock.deliverWithRetries).not.toHaveBeenCalled();
   });
 
   it('202 без секрета для источника без секрета', async () => {
-    const res = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post(`/webhooks/${openSourceId}`)
-      .send({ a: 1 })
+      .send({
+        a: 1,
+      })
       .expect(202);
 
-    const result = body<IngestResponse>(res);
+    const result = body<IngestResponse>(response);
 
     expect(deliveryServiceMock.deliverWithRetries).toHaveBeenCalledTimes(1);
     expect(deliveryServiceMock.deliverWithRetries).toHaveBeenCalledWith(
@@ -124,31 +146,35 @@ describe('Webhooks ingest (e2e)', () => {
   });
 
   it('404 NOT_FOUND для неизвестного sourceId', async () => {
-    const res = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post('/webhooks/3f2a8c1e-5b0d-4f7a-9c3e-1d2b4a5c6e7f')
-      .send({ a: 1 })
+      .send({
+        a: 1,
+      })
       .expect(404);
 
-    expect(body<ErrorBody>(res).code).toBe('NOT_FOUND');
+    expect(body<ErrorBody>(response).code).toBe('NOT_FOUND');
     expect(deliveryServiceMock.deliverWithRetries).not.toHaveBeenCalled();
   });
 
   it('404 для не-uuid sourceId', async () => {
     await request(app.getHttpServer())
       .post('/webhooks/definitely-not-a-source')
-      .send({ a: 1 })
+      .send({
+        a: 1,
+      })
       .expect(404);
 
     expect(deliveryServiceMock.deliverWithRetries).not.toHaveBeenCalled();
   });
 
   it('массив в body проходит', async () => {
-    const res = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post(`/webhooks/${openSourceId}`)
       .send([{ a: 1 }, { b: 2 }])
       .expect(202);
 
-    const result = body<IngestResponse>(res);
+    const result = body<IngestResponse>(response);
 
     expect(deliveryServiceMock.deliverWithRetries).toHaveBeenCalledWith(
       result.eventId,
@@ -156,20 +182,24 @@ describe('Webhooks ingest (e2e)', () => {
   });
 
   it('событие сохранено: whitelist заголовков, secret замаскирован, delivery pending', async () => {
-    const res = await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post(`/webhooks/${securedSourceId}`)
       .set('X-Webhook-Secret', 's3cret')
       .set('User-Agent', 'curl/8.0')
       .set('X-Evil-Header', 'should-not-be-stored')
-      .send({ orderId: 7 })
+      .send({
+        orderId: 7,
+      })
       .expect(202);
 
-    const { eventId } = body<IngestResponse>(res);
+    const { eventId } = body<IngestResponse>(response);
     const event = eventsService.findById(eventId);
 
     expect(event).toBeDefined();
     expect(event!.sourceId).toBe(securedSourceId);
-    expect(event!.body).toEqual({ orderId: 7 });
+    expect(event!.body).toEqual({
+      orderId: 7,
+    });
     expect(event!.headers['x-webhook-secret']).toBe('***');
     expect(event!.headers['user-agent']).toBe('curl/8.0');
     expect(event!.headers).not.toHaveProperty('x-evil-header');
@@ -188,7 +218,9 @@ describe('Webhooks ingest (e2e)', () => {
     const first = await request(app.getHttpServer())
       .post(`/webhooks/${openSourceId}`)
       .set('Idempotency-Key', 'key-1')
-      .send({ n: 1 })
+      .send({
+        n: 1,
+      })
       .expect(202);
 
     const firstResult = body<IngestResponse>(first);
@@ -202,7 +234,9 @@ describe('Webhooks ingest (e2e)', () => {
     const second = await request(app.getHttpServer())
       .post(`/webhooks/${openSourceId}`)
       .set('Idempotency-Key', 'key-1')
-      .send({ n: 1 })
+      .send({
+        n: 1,
+      })
       .expect(202);
 
     const secondResult = body<IngestResponse>(second);
@@ -216,13 +250,17 @@ describe('Webhooks ingest (e2e)', () => {
     const first = await request(app.getHttpServer())
       .post(`/webhooks/${openSourceId}`)
       .set('Idempotency-Key', 'key-a')
-      .send({ n: 1 })
+      .send({
+        n: 1,
+      })
       .expect(202);
 
     const second = await request(app.getHttpServer())
       .post(`/webhooks/${openSourceId}`)
       .set('Idempotency-Key', 'key-b')
-      .send({ n: 1 })
+      .send({
+        n: 1,
+      })
       .expect(202);
 
     const firstResult = body<IngestResponse>(first);
@@ -244,14 +282,18 @@ describe('Webhooks ingest (e2e)', () => {
     const fromOpen = await request(app.getHttpServer())
       .post(`/webhooks/${openSourceId}`)
       .set('Idempotency-Key', 'shared-key')
-      .send({ n: 1 })
+      .send({
+        n: 1,
+      })
       .expect(202);
 
     const fromSecured = await request(app.getHttpServer())
       .post(`/webhooks/${securedSourceId}`)
       .set('X-Webhook-Secret', 's3cret')
       .set('Idempotency-Key', 'shared-key')
-      .send({ n: 1 })
+      .send({
+        n: 1,
+      })
       .expect(202);
 
     const openResult = body<IngestResponse>(fromOpen);

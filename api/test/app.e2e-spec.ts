@@ -6,6 +6,8 @@ import {
 import request from 'supertest';
 import { AppModule } from './../src/app.module';
 import { setupApp } from './../src/setup-app';
+import { StorageService } from '../src/storage/storage.service';
+import { InMemoryStorageService } from './in-memory-storage';
 
 describe('App (e2e)', () => {
   let app: NestFastifyApplication;
@@ -13,7 +15,10 @@ describe('App (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(StorageService)
+      .useClass(InMemoryStorageService)
+      .compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),

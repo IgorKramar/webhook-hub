@@ -7,6 +7,8 @@ import request from 'supertest';
 import { AppModule } from './../src/app.module';
 import { setupApp } from './../src/setup-app';
 import { SourceResponseDto } from './../src/sources/dto/source-response.dto';
+import { StorageService } from '../src/storage/storage.service';
+import { InMemoryStorageService } from './in-memory-storage';
 
 interface ErrorBody {
   error: string;
@@ -27,7 +29,10 @@ describe('Sources (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(StorageService)
+      .useClass(InMemoryStorageService)
+      .compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),

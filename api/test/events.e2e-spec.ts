@@ -4,10 +4,12 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
-import { AppModule } from './../src/app.module';
-import { DeliveryService } from './../src/delivery/delivery.service';
-import { EventsService } from './../src/events/events.service';
-import { setupApp } from './../src/setup-app';
+import { AppModule } from '../src/app.module';
+import { DeliveryService } from '../src/delivery/delivery.service';
+import { EventsService } from '../src/events/events.service';
+import { setupApp } from '../src/setup-app';
+import { StorageService } from '../src/storage/storage.service';
+import { InMemoryStorageService } from './in-memory-storage';
 
 interface IngestResponse {
   eventId: string;
@@ -50,13 +52,18 @@ describe('Events API (e2e)', () => {
   let eventId: string;
 
   const deliveryServiceMock = {
-    deliverWithRetries: jest.fn(() => Promise.resolve()),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    deliverWithRetries: jest.fn((_eventId: string): Promise<void> =>
+      Promise.resolve(),
+    ),
   };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
+      .overrideProvider(StorageService)
+      .useClass(InMemoryStorageService)
       .overrideProvider(DeliveryService)
       .useValue(deliveryServiceMock)
       .compile();
@@ -66,6 +73,7 @@ describe('Events API (e2e)', () => {
     );
 
     setupApp(app);
+
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
 
@@ -73,14 +81,18 @@ describe('Events API (e2e)', () => {
 
     const sourceResponse = await request(app.getHttpServer())
       .post('/api/sources')
-      .send({ name: 'events-test-source' })
+      .send({
+        name: 'events-test-source',
+      })
       .expect(201);
 
     sourceId = body<{ id: string }>(sourceResponse).id;
 
     const ingestResponse = await request(app.getHttpServer())
       .post(`/webhooks/${sourceId}`)
-      .send({ orderId: 42 })
+      .send({
+        orderId: 42,
+      })
       .expect(202);
 
     eventId = body<IngestResponse>(ingestResponse).eventId;
@@ -124,7 +136,9 @@ describe('Events API (e2e)', () => {
   it('received выбирает только pending-события без попыток доставки', async () => {
     const ingestResponse = await request(app.getHttpServer())
       .post(`/webhooks/${sourceId}`)
-      .send({ kind: 'received-filter-test' })
+      .send({
+        kind: 'received-filter-test',
+      })
       .expect(202);
 
     const receivedEventId = body<IngestResponse>(ingestResponse).eventId;
@@ -253,12 +267,16 @@ describe('Events API (e2e)', () => {
   it('применяет page и limit', async () => {
     const firstIngest = await request(app.getHttpServer())
       .post(`/webhooks/${sourceId}`)
-      .send({ pageTest: 1 })
+      .send({
+        pageTest: 1,
+      })
       .expect(202);
 
     const secondIngest = await request(app.getHttpServer())
       .post(`/webhooks/${sourceId}`)
-      .send({ pageTest: 2 })
+      .send({
+        pageTest: 2,
+      })
       .expect(202);
 
     const firstId = body<IngestResponse>(firstIngest).eventId;

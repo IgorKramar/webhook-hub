@@ -23,6 +23,9 @@ export class WebhooksService {
   /**
    * Проверяет источник и secret, сохраняет событие и запускает
    * асинхронную доставку.
+   *
+   * Сохранение в Map выполняется синхронно. JSON-snapshot ставится
+   * StorageService в последовательную очередь записи.
    */
   ingest(
     sourceId: string,
@@ -75,9 +78,8 @@ export class WebhooksService {
       this.idempotency.set(scopedIdempotencyKey, event.id);
     }
 
-    // Клиент получает 202 сразу после сохранения события. Ошибка подписчика
-    // обрабатывается DeliveryService; этот catch защищает от неожиданных
-    // ошибок orchestration-кода и unhandledRejection.
+    // Клиент получает 202 после синхронного обновления Map и постановки
+    // snapshot в очередь записи. Доставка выполняется fire-and-forget.
     void this.deliveryService
       .deliverWithRetries(event.id)
       .catch((error: unknown) => {

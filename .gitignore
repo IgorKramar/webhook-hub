@@ -4,6 +4,7 @@ node_modules/
 api/data/
 web/.next/
 dist/
+data/
 *.log
 *.md
 !README.md

@@ -5,6 +5,7 @@ import { EventsController } from './events/events.controller';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health.controller';
 import { SourcesModule } from './sources/sources.module';
+import { StorageModule } from './storage/storage.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
@@ -12,6 +13,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    StorageModule,
     SourcesModule,
     EventsModule,
     DeliveryModule,

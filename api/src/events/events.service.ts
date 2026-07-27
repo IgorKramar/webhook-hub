@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
+import type { EventStatusFilter } from './dto/list-events-query.dto';
 import {
   DeliveryAttempt,
   DeliveryStatus,
   StoredEvent,
 } from './entities/event.entity';
-import type { EventStatusFilter } from './dto/list-events-query.dto';
+import { StorageService } from '../storage/storage.service';
 
 export interface FindEventsOptions {
   sourceId?: string;
@@ -21,24 +27,50 @@ export interface EventsPage {
 }
 
 /**
- * In-memory хранилище событий. Map сохраняет порядок вставки.
+ * In-memory представление событий с персистентностью в JSON-файле.
  *
- * Все изменения delivery проходят через этот сервис, чтобы позднее
- * можно было добавить персистентность без изменения DeliveryService.
+ * Map является актуальным состоянием работающего процесса. После каждой
+ * мутации полный snapshot событий ставится в последовательную очередь
+ * записи StorageService.
+ *
+ * Все изменения delivery проходят через этот сервис, чтобы не допустить
+ * обхода персистентности со стороны DeliveryService.
  */
 @Injectable()
-export class EventsService {
+export class EventsService implements OnModuleInit {
   private readonly events = new Map<string, StoredEvent>();
 
+  constructor(
+    @Optional()
+    private readonly storage?: StorageService,
+  ) {}
+
   /**
-   * Сохраняет новое событие.
+   * Загружает сохранённые события после инициализации модуля.
+   *
+   * При отсутствии StorageService, например в изолированном unit-тесте,
+   * сервис работает только в памяти.
+   */
+  onModuleInit(): void {
+    for (const event of this.storage?.getEvents() ?? []) {
+      this.events.set(event.id, event);
+    }
+  }
+
+  /**
+   * Сохраняет новое событие в памяти и ставит актуальный snapshot
+   * событий в очередь записи.
    */
   add(event: StoredEvent): void {
     this.events.set(event.id, event);
+    this.persist();
   }
 
   /**
    * Возвращает событие по идентификатору или undefined.
+   *
+   * Возвращаемый объект является внутренней mutable-моделью. Изменять
+   * delivery напрямую нельзя: для этого предназначены методы сервиса.
    */
   findById(id: string): StoredEvent | undefined {
     return this.events.get(id);
@@ -68,7 +100,8 @@ export class EventsService {
    * Возвращает отфильтрованную страницу событий.
    *
    * События сортируются по receivedAt от новых к старым.
-   * received означает pending-событие, у которого ещё нет попыток доставки.
+   * received означает pending-событие, у которого ещё нет попыток
+   * доставки.
    */
   findPage(options: FindEventsOptions): EventsPage {
     const filtered = [...this.events.values()]
@@ -105,20 +138,24 @@ export class EventsService {
   /**
    * Переводит событие в pending перед новой ручной серией доставки.
    *
-   * История предыдущих попыток сохраняется.
+   * История предыдущих попыток сохраняется. Изменённое состояние
+   * ставится в очередь записи после выполнения мутации.
    */
   markDeliveryPending(eventId: string): void {
     const event = this.getByIdOrThrow(eventId);
 
     event.delivery.status = 'pending';
     event.delivery.lastError = null;
+
+    this.persist();
   }
 
   /**
-   * Атомарно добавляет попытку доставки и обновляет связанное с ней
-   * состояние delivery.
+   * Добавляет попытку доставки и обновляет связанное состояние delivery.
    *
-   * История предыдущих попыток сохраняется.
+   * После синхронной мутации Map создаётся snapshot актуального состояния
+   * и ставится в последовательную очередь записи. История предыдущих
+   * попыток не удаляется.
    */
   recordDeliveryAttempt(
     eventId: string,
@@ -131,5 +168,14 @@ export class EventsService {
     event.delivery.attempts.push(attempt);
     event.delivery.status = status;
     event.delivery.lastError = lastError;
+
+    this.persist();
+  }
+
+  /**
+   * Ставит в очередь запись полного snapshot событий.
+   */
+  private persist(): void {
+    this.storage?.saveEvents([...this.events.values()]);
   }
 }
