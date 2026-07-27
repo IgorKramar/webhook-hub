@@ -35,7 +35,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const res = exception.getResponse();
       if (typeof res === 'string') return res;
       const message = (res as { message?: string | string[] }).message;
-      if (Array.isArray(message)) return message.join('; '); // ValidationPipe
+      if (Array.isArray(message)) return message.join('; ');
       if (message) return message;
     }
     return 'Internal server error';

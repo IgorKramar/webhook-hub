@@ -79,7 +79,7 @@ export class WebhooksService {
     }
 
     // Клиент получает 202 после синхронного обновления Map и постановки
-    // snapshot в очередь записи. Доставка выполняется fire-and-forget.
+    // snapshot в очередь записи.
     void this.deliveryService
       .deliverWithRetries(event.id)
       .catch((error: unknown) => {
