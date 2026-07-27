@@ -4,6 +4,21 @@ import {
   DeliveryStatus,
   StoredEvent,
 } from './entities/event.entity';
+import type { EventStatusFilter } from './dto/list-events-query.dto';
+
+export interface FindEventsOptions {
+  sourceId?: string;
+  status?: EventStatusFilter;
+  page: number;
+  limit: number;
+}
+
+export interface EventsPage {
+  items: StoredEvent[];
+  page: number;
+  limit: number;
+  total: number;
+}
 
 /**
  * In-memory хранилище событий. Map сохраняет порядок вставки.
@@ -47,6 +62,56 @@ export class EventsService {
    */
   findAll(): StoredEvent[] {
     return [...this.events.values()];
+  }
+
+  /**
+   * Возвращает отфильтрованную страницу событий.
+   *
+   * События сортируются по receivedAt от новых к старым.
+   * received означает pending-событие, у которого ещё нет попыток доставки.
+   */
+  findPage(options: FindEventsOptions): EventsPage {
+    const filtered = [...this.events.values()]
+      .filter(
+        (event) => !options.sourceId || event.sourceId === options.sourceId,
+      )
+      .filter((event) => {
+        if (!options.status) {
+          return true;
+        }
+
+        if (options.status === 'received') {
+          return (
+            event.delivery.status === 'pending' &&
+            event.delivery.attempts.length === 0
+          );
+        }
+
+        return event.delivery.status === options.status;
+      })
+      .sort((left, right) => right.receivedAt.localeCompare(left.receivedAt));
+
+    const total = filtered.length;
+    const offset = (options.page - 1) * options.limit;
+
+    return {
+      items: filtered.slice(offset, offset + options.limit),
+      page: options.page,
+      limit: options.limit,
+      total,
+    };
+  }
+
+  /**
+   * Переводит событие в pending перед новой ручной серией доставки.
+   *
+   * История предыдущих попыток сохраняется.
+   */
+  markDeliveryPending(eventId: string): void {
+    const event = this.getByIdOrThrow(eventId);
+
+    event.delivery.status = 'pending';
+    event.delivery.lastError = null;
   }
 
   /**
