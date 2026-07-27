@@ -1,0 +1,44 @@
+.page {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 40px 0;
+}
+
+.heading,
+.filters,
+.table {
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    #e9edf4 25%,
+    #f6f8fb 50%,
+    #e9edf4 75%
+  );
+  background-size: 200% 100%;
+  animation: pulse 1.4s infinite;
+}
+
+.heading {
+  width: 360px;
+  height: 68px;
+  margin-bottom: 28px;
+}
+
+.filters {
+  height: 84px;
+  margin-bottom: 24px;
+}
+
+.table {
+  height: 360px;
+}
+
+@keyframes pulse {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}

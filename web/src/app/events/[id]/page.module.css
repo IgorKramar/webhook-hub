@@ -1,0 +1,255 @@
+.page {
+  width: min(980px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 64px;
+}
+
+.backLink {
+  display: inline-flex;
+  margin-bottom: 24px;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.heading h1 {
+  margin-bottom: 5px;
+  font-size: 34px;
+  letter-spacing: -0.03em;
+}
+
+.heading button {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  color: #ffffff;
+  background: var(--primary);
+  font-weight: 700;
+}
+
+.heading button:hover:not(:disabled) {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+
+.heading button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.eventId,
+.monospace {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.summary > div {
+  display: flex;
+  min-height: 78px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px 20px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.summary > div:nth-child(2n) {
+  border-right: 0;
+}
+
+.summary > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status {
+  display: inline-flex;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pending {
+  color: var(--pending);
+  background: var(--pending-background);
+}
+
+.delivered {
+  color: var(--success);
+  background: var(--success-background);
+}
+
+.failed {
+  color: var(--danger);
+  background: var(--danger-background);
+}
+
+.card,
+.lastError,
+.errorState {
+  margin-bottom: 20px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.card h2,
+.lastError h2 {
+  margin-bottom: 14px;
+  font-size: 18px;
+}
+
+.card pre {
+  max-height: 520px;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 9px;
+  color: var(--code-foreground);
+  background: var(--code-background);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.lastError {
+  border-color: #fecdca;
+  color: var(--danger);
+  background: var(--danger-background);
+}
+
+.lastError h2 {
+  margin-bottom: 5px;
+}
+
+.emptyAttempts {
+  color: var(--muted);
+}
+
+.attemptsWrapper {
+  overflow-x: auto;
+}
+
+.attempts {
+  width: 100%;
+  min-width: 650px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.attempts th,
+.attempts td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.attempts th {
+  color: var(--muted);
+  background: var(--surface-secondary);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.attempts tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.success {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.errorState h1 {
+  margin-bottom: 8px;
+}
+
+.errorState p {
+  color: var(--muted);
+}
+
+:global(.retrySuccess),
+:global(.retryError) {
+  max-width: 260px;
+  margin-top: 8px;
+  font-size: 13px;
+  text-align: right;
+}
+
+:global(.retrySuccess) {
+  color: var(--success);
+}
+
+:global(.retryError) {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .page {
+    width: min(100% - 24px, 980px);
+    padding-top: 24px;
+  }
+
+  .heading {
+    flex-direction: column;
+  }
+
+  .summary {
+    grid-template-columns: 1fr;
+  }
+
+  .summary > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .summary > div:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .summary > div:last-child {
+    border-bottom: 0;
+  }
+
+  :global(.retrySuccess),
+  :global(.retryError) {
+    text-align: left;
+  }
+}
