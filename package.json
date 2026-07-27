@@ -1,0 +1,15 @@
+{
+  "name": "webhook-hub",
+  "private": true,
+  "workspaces": ["api", "web"],
+  "scripts": {
+    "dev": "concurrently -n api,web,mock -c blue,green,yellow \"npm run dev -w api\" \"npm run dev -w web\" \"node scripts/mock-subscriber.mjs\"",
+    "dev:api": "npm run dev -w api",
+    "dev:web": "npm run dev -w web",
+    "mock": "node scripts/mock-subscriber.mjs",
+    "test": "npm run test -w api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
