@@ -1,29 +1,44 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import request from 'supertest';
-import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { setupApp } from './../src/setup-app';
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+describe('App (e2e)', () => {
+  let app: NestFastifyApplication;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
+    setupApp(app);
     await app.init();
+    await app.getHttpAdapter().getInstance().ready(); // грабля Fastify!
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
-  });
-
-  afterEach(async () => {
+  afterAll(async () => {
     await app.close();
+  });
+
+  it('GET /health -> 200 { status: ok }', () =>
+    request(app.getHttpServer())
+      .get('/health')
+      .expect(200)
+      .expect({ status: 'ok' }));
+
+  it('GET /unknown -> 404 в формате { error, code }', async () => {
+    const res = await request(app.getHttpServer()).get('/unknown').expect(404);
+    expect(res.body).toEqual({
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      error: expect.any(String),
+      code: 'NOT_FOUND',
+    });
   });
 });
